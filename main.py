@@ -1,7 +1,11 @@
+# TO RESET, DELETE THE DATA.JSON FILE. DO NOT CLEAR THE DATA.JSON FILE.
+
+
 import tkinter as tk
 from tkinter import messagebox
 import json
 import datetime
+import requests
 
 # Data management class
 class HoursTicketsManager:
@@ -49,6 +53,7 @@ class ArcadeManagerApp:
         
         self.root = root
         self.root.title("Hack Club Arcade Manager")
+        # self.root.geometry("750x500")
         
         # Widgets for logging hours
         self.log_frame = tk.Frame(root)
@@ -57,7 +62,7 @@ class ArcadeManagerApp:
         self.log_button = tk.Button(self.log_frame, text="I hacked for an hour", command=self.log_hour)
         self.log_button.pack(side=tk.LEFT, padx=5)
         
-        self.undo_button = tk.Button(self.log_frame, text="Oops, I pressed it by mistake", command=self.undo_hour)
+        self.undo_button = tk.Button(self.log_frame, text="Oops, Revert hour!", command=self.undo_hour)
         self.undo_button.pack(side=tk.LEFT, padx=5)
         
         # Widgets for setting goal
@@ -87,7 +92,12 @@ class ArcadeManagerApp:
         self.remaining_time_label = tk.Label(root, text=f"Days until end: {self.get_remaining_days()}")
         self.remaining_time_label.pack(pady=10)
 
+        # New widget for time left in the hour
+        self.time_left_label = tk.Label(root, text="Time left in Hack Hour: Not in session")
+        self.time_left_label.pack(pady=10)
+
         self.update_progress()
+        self.update_time_left()
 
     def log_hour(self):
         self.manager.log_hours(1)
@@ -111,15 +121,27 @@ class ArcadeManagerApp:
         self.progress_canvas.delete("all")
         goal = self.manager.get_goal()
         hours = self.manager.get_hours()
-        remaining_days = self.get_remaining_days()
-        days_passed = 5 + (datetime.datetime.now() - datetime.datetime(2024, 6, 18)).days
-        total_days = (datetime.datetime(2024, 8, 31) - datetime.datetime(2024, 6, 18)).days
+        
+        # Calculate the number of days passed since the start date
+        start_date = datetime.datetime(2024, 6, 18)
+        end_date = datetime.datetime(2024, 8, 31)
+        today = datetime.datetime.now()
+        
+        days_passed = (today - start_date).days
+        total_days = (end_date - start_date).days
+        
+        # Ensure days_passed is at least 1 to avoid division by zero
+        days_passed = max(days_passed, 1)
+
+        # Calculate target hours based on the goal and elapsed days
         target_hours = (days_passed / total_days) * goal if goal > 0 else 0
         
+        # Determine the width of the progress bars
         progress_width = 400
         target_width = min(progress_width, int((target_hours / goal) * progress_width)) if goal > 0 else 0
         current_width = min(progress_width, int((hours / goal) * progress_width)) if goal > 0 else 0
         
+        # Draw the progress bars
         self.progress_canvas.create_rectangle(0, 0, target_width, 30, fill='lightblue', outline='black')
         self.progress_canvas.create_rectangle(0, 0, current_width, 30, fill='green', outline='black')
 
@@ -128,6 +150,25 @@ class ArcadeManagerApp:
         today = datetime.datetime.now()
         remaining_days = (end_date - today).days
         return remaining_days
+
+    def get_time_left(self):
+        try:
+            response = requests.get("https://hackhour.hackclub.com/api/clock/U078WRY8MLH")
+            time_left = response.json()
+            return time_left
+        except requests.RequestException:
+            return -1
+
+    def update_time_left(self):
+        time_left = self.get_time_left()
+        if time_left == -1:
+            self.time_left_label.config(text="Time left in Hack Hour: Not in session")
+        else:
+            minutes_left = time_left // (1000 * 60)  # Convert milliseconds to minutes
+            self.time_left_label.config(text=f"Time left in Hack Hour: {minutes_left}")
+        
+        # Schedule the next update in 30 seconds
+        self.root.after(30000, self.update_time_left)
 
 if __name__ == "__main__":
     root = tk.Tk()
