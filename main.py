@@ -1,4 +1,3 @@
-# TO RESET, DELETE THE DATA.JSON FILE. DO NOT CLEAR THE DATA.JSON FILE.
 
 
 import tkinter as tk
@@ -7,7 +6,6 @@ import json
 import datetime
 import requests
 
-# Data management class
 class HoursTicketsManager:
     def __init__(self, data_file='data.json'):
         self.data_file = data_file
@@ -18,7 +16,7 @@ class HoursTicketsManager:
             with open(self.data_file, 'r') as file:
                 self.data = json.load(file)
         except FileNotFoundError:
-            self.data = {'hours': 0, 'goal': 0}
+            self.data = {'hours': 0, 'goal': 0, 'slack_user_id': ''}
             self.save_data()
 
     def save_data(self):
@@ -39,6 +37,13 @@ class HoursTicketsManager:
     def get_goal(self):
         return self.data.get('goal', 0)
 
+    def set_slack_user_id(self, slack_user_id):
+        self.data['slack_user_id'] = slack_user_id
+        self.save_data()
+
+    def get_slack_user_id(self):
+        return self.data.get('slack_user_id', '')
+
     def undo_hours(self, hours):
         if self.data['hours'] >= hours:
             self.data['hours'] -= hours
@@ -46,14 +51,26 @@ class HoursTicketsManager:
         else:
             messagebox.showwarning("Invalid Operation", "Cannot undo more hours than logged.")
 
-# GUI application
 class ArcadeManagerApp:
     def __init__(self, root):
         self.manager = HoursTicketsManager()
         
         self.root = root
         self.root.title("Hack Club Arcade Manager")
-        # self.root.geometry("750x500")
+        
+        # Slack User ID input
+        self.slack_frame = tk.Frame(root)
+        self.slack_frame.pack(pady=10)
+        
+        self.slack_label = tk.Label(self.slack_frame, text="Enter your Slack User ID:")
+        self.slack_label.pack(side=tk.LEFT)
+        
+        self.slack_entry = tk.Entry(self.slack_frame)
+        self.slack_entry.pack(side=tk.LEFT, padx=5)
+        self.slack_entry.insert(0, self.manager.get_slack_user_id())
+        
+        self.slack_button = tk.Button(self.slack_frame, text="Set Slack ID", command=self.set_slack_id)
+        self.slack_button.pack(side=tk.LEFT)
         
         # Widgets for logging hours
         self.log_frame = tk.Frame(root)
@@ -62,7 +79,7 @@ class ArcadeManagerApp:
         self.log_button = tk.Button(self.log_frame, text="I hacked for an hour", command=self.log_hour)
         self.log_button.pack(side=tk.LEFT, padx=5)
         
-        self.undo_button = tk.Button(self.log_frame, text="Oops, Revert hour!", command=self.undo_hour)
+        self.undo_button = tk.Button(self.log_frame, text="Oops, I pressed it by mistake", command=self.undo_hour)
         self.undo_button.pack(side=tk.LEFT, padx=5)
         
         # Widgets for setting goal
@@ -81,23 +98,36 @@ class ArcadeManagerApp:
         self.goal_info_label = tk.Label(root, text=f"Ticket Goal: {self.manager.get_goal()}")
         self.goal_info_label.pack(pady=10)
         
-        # Progress bar
+        # Progress bars and stats
         self.progress_frame = tk.Frame(root)
         self.progress_frame.pack(pady=10)
         
-        self.progress_canvas = tk.Canvas(self.progress_frame, width=400, height=30, bg='white')
+        self.progress_canvas = tk.Canvas(self.progress_frame, width=400, height=70, bg='white')
         self.progress_canvas.pack()
-        
-        # Widget for remaining time
-        self.remaining_time_label = tk.Label(root, text=f"Days until end: {self.get_remaining_days()}")
-        self.remaining_time_label.pack(pady=10)
 
-        # New widget for time left in the hour
-        self.time_left_label = tk.Label(root, text="Time left in Hack Hour: Not in session")
+        # Stats display
+        self.stats_frame = tk.Frame(root)
+        self.stats_frame.pack(pady=10)
+
+        self.tickets_needed_label = tk.Label(self.stats_frame, text="Tickets needed: ")
+        self.tickets_needed_label.pack()
+
+        self.current_percentage_label = tk.Label(self.stats_frame, text="Current percentage: ")
+        self.current_percentage_label.pack()
+
+        self.target_percentage_label = tk.Label(self.stats_frame, text="Target percentage: ")
+        self.target_percentage_label.pack()
+
+        self.time_left_label = tk.Label(root, text="Minutes left in hour: Not in session")
         self.time_left_label.pack(pady=10)
 
         self.update_progress()
         self.update_time_left()
+
+    def set_slack_id(self):
+        slack_id = self.slack_entry.get()
+        self.manager.set_slack_user_id(slack_id)
+        messagebox.showinfo("Success", f"Slack User ID set to: {slack_id}")
 
     def log_hour(self):
         self.manager.log_hours(1)
@@ -143,17 +173,25 @@ class ArcadeManagerApp:
         
         # Draw the progress bars
         self.progress_canvas.create_rectangle(0, 0, target_width, 30, fill='lightblue', outline='black')
-        self.progress_canvas.create_rectangle(0, 0, current_width, 30, fill='green', outline='black')
+        self.progress_canvas.create_text(10, 15, anchor='w', text="You should be here")
+        self.progress_canvas.create_rectangle(0, 40, current_width, 70, fill='green', outline='black')
+        self.progress_canvas.create_text(10, 55, anchor='w', text="You are here")
 
-    def get_remaining_days(self):
-        end_date = datetime.datetime(2024, 8, 31)
-        today = datetime.datetime.now()
-        remaining_days = (end_date - today).days
-        return remaining_days
+        # Update stats
+        tickets_needed = max(0, goal - hours)
+        current_percentage = (hours / goal) * 100 if goal > 0 else 0
+        target_percentage = (target_hours / goal) * 100 if goal > 0 else 0
+
+        self.tickets_needed_label.config(text=f"Tickets needed: {tickets_needed:.1f}")
+        self.current_percentage_label.config(text=f"Current percentage: {current_percentage:.1f}%")
+        self.target_percentage_label.config(text=f"Target percentage: {target_percentage:.1f}%")
 
     def get_time_left(self):
+        slack_id = self.manager.get_slack_user_id()
+        if not slack_id:
+            return -1
         try:
-            response = requests.get("https://hackhour.hackclub.com/api/clock/U078WRY8MLH")
+            response = requests.get(f"https://hackhour.hackclub.com/api/clock/{slack_id}")
             time_left = response.json()
             return time_left
         except requests.RequestException:
@@ -162,10 +200,10 @@ class ArcadeManagerApp:
     def update_time_left(self):
         time_left = self.get_time_left()
         if time_left == -1:
-            self.time_left_label.config(text="Time left in Hack Hour: Not in session")
+            self.time_left_label.config(text="Minutes left in hour: Not in session")
         else:
             minutes_left = time_left // (1000 * 60)  # Convert milliseconds to minutes
-            self.time_left_label.config(text=f"Time left in Hack Hour: {minutes_left}")
+            self.time_left_label.config(text=f"Minutes left in hour: {minutes_left}")
         
         # Schedule the next update in 30 seconds
         self.root.after(30000, self.update_time_left)
