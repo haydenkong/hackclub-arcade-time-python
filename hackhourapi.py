@@ -3,7 +3,7 @@ from tkinter import ttk, messagebox, scrolledtext
 import requests
 import json
 
-API_KEY = '58785747-868a-4a09-ae63-fff5d7024476'
+API_KEY = 'YOUR /API KEY HERE'
 BASE_URL = 'https://hackhour.hackclub.com'
 
 headers = {
@@ -98,7 +98,7 @@ def get_history_gui():
     result = get_history(slack_id)
     display_result(result)
 
-slack_id = 'U078WRY8MLH'
+slack_id = 'YOUR SLACK ID HERE'
 
 root = tk.Tk()
 root.title("Session Manager")
