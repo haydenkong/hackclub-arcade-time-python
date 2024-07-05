@@ -5,137 +5,139 @@ import json
 
 API_KEY = 'YOUR /API KEY HERE'
 BASE_URL = 'https://hackhour.hackclub.com'
+SLACK_ID = 'YOUR SLACK ID HERE'
 
-headers = {
-    'Authorization': f'Bearer {API_KEY}'
-}
+class SessionManager:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("HackHour API Manager")
+        self.root.geometry("800x600")
+        self.headers = {'Authorization': f'Bearer {API_KEY}'}
+        
+        self.setup_ui()
 
-def start_session(slack_id, work):
-    url = f'{BASE_URL}/api/start/{slack_id}'
-    data = {
-        'work': work
-    }
-    response = requests.post(url, headers=headers, json=data)
-    return response.json()
+    def setup_ui(self):
+        self.notebook = ttk.Notebook(self.root)
+        self.notebook.pack(expand=True, fill="both", padx=10, pady=10)
 
-def pause_or_resume_session(slack_id):
-    url = f'{BASE_URL}/api/pause/{slack_id}'
-    response = requests.post(url, headers=headers)
-    return response.json()
+        self.setup_api_overview_tab()
+        self.setup_session_tab()
+        self.setup_stats_tab()
+        self.setup_goals_tab()
+        self.setup_history_tab()
 
-def cancel_session(slack_id):
-    url = f'{BASE_URL}/api/cancel/{slack_id}'
-    response = requests.post(url, headers=headers)
-    return response.json()
+    def setup_api_overview_tab(self):
+        overview_frame = ttk.Frame(self.notebook)
+        self.notebook.add(overview_frame, text="API Overview")
 
-def get_latest_session(slack_id):
-    url = f'{BASE_URL}/api/session/{slack_id}'
-    response = requests.get(url, headers=headers)
-    return response.json()
+        ttk.Label(overview_frame, text="HackHour API Documentation", font=("Arial", 16, "bold")).pack(pady=10)
 
-def get_stats(slack_id):
-    url = f'{BASE_URL}/api/stats/{slack_id}'
-    response = requests.get(url, headers=headers)
-    return response.json()
+        api_text = scrolledtext.ScrolledText(overview_frame, wrap=tk.WORD, width=80, height=20)
+        api_text.pack(padx=10, pady=10, expand=True, fill="both")
+        
+        api_docs = """
+        HackHour API Overview:
 
-def get_goals(slack_id):
-    url = f'{BASE_URL}/api/goals/{slack_id}'
-    response = requests.get(url, headers=headers)
-    return response.json()
+        Authenticated Endpoints (require 'Authorization: Bearer <apikey>' header):
+        1. GET /api/session/:slackId - Get latest session for user
+        2. GET /api/stats/:slackId - Get stats for user
+        3. GET /api/goals/:slackId - Get goals for user
+        4. GET /api/history/:slackId - Get history for user
+        5. POST /api/start/:slackId - Start a new session
+        6. POST /api/pause/:slackId - Pause/resume current session
+        7. POST /api/cancel/:slackId - Cancel current session
 
-def get_history(slack_id):
-    url = f'{BASE_URL}/api/history/{slack_id}'
-    response = requests.get(url, headers=headers)
-    return response.json()
+        Non-Authenticated Endpoints:
+        1. GET /ping - Check if service is alive
+        2. GET /status - Get details on hack hour status
+        3. GET /api/clock/:slackId - Get expected end time (Deprecated)
 
-def display_json_tree(parent, json_dict, tree):
-    for key, value in json_dict.items():
-        if isinstance(value, dict):
-            node = tree.insert(parent, 'end', text=key, open=True)
-            display_json_tree(node, value, tree)
-        elif isinstance(value, list):
-            node = tree.insert(parent, 'end', text=key, open=True)
-            for i, item in enumerate(value):
-                item_node = tree.insert(node, 'end', text=f'[{i}]', open=True)
-                if isinstance(item, dict):
-                    display_json_tree(item_node, item, tree)
-                else:
-                    tree.insert(item_node, 'end', text=item)
-        else:
-            tree.insert(parent, 'end', text=f'{key}: {value}')
+        Note: There is no guarantee for the reliability of the API. Use at your own risk.
+        """
+        api_text.insert(tk.END, api_docs)
+        api_text.config(state=tk.DISABLED)
 
-def display_result(result):
-    for i in tree.get_children():
-        tree.delete(i)
-    display_json_tree('', result, tree)
+    def setup_session_tab(self):
+        session_frame = ttk.Frame(self.notebook)
+        self.notebook.add(session_frame, text="Session")
 
-def start_session_gui():
-    work = work_entry.get()
-    result = start_session(slack_id, work)
-    display_result(result)
+        ttk.Button(session_frame, text="Get Latest Session", command=self.get_latest_session_gui).pack(pady=5)
+        ttk.Button(session_frame, text="Start New Session", command=self.start_session_gui).pack(pady=5)
+        ttk.Button(session_frame, text="Pause/Resume Session", command=self.pause_or_resume_session_gui).pack(pady=5)
+        ttk.Button(session_frame, text="Cancel Session", command=self.cancel_session_gui).pack(pady=5)
 
-def pause_or_resume_session_gui():
-    result = pause_or_resume_session(slack_id)
-    display_result(result)
+        self.session_result = scrolledtext.ScrolledText(session_frame, wrap=tk.WORD, width=70, height=15)
+        self.session_result.pack(padx=10, pady=10, expand=True, fill="both")
 
-def cancel_session_gui():
-    result = cancel_session(slack_id)
-    display_result(result)
+    def setup_stats_tab(self):
+        stats_frame = ttk.Frame(self.notebook)
+        self.notebook.add(stats_frame, text="Stats")
 
-def get_latest_session_gui():
-    result = get_latest_session(slack_id)
-    display_result(result)
+        ttk.Button(stats_frame, text="Get Stats", command=self.get_stats_gui).pack(pady=10)
 
-def get_stats_gui():
-    result = get_stats(slack_id)
-    display_result(result)
+        self.stats_result = scrolledtext.ScrolledText(stats_frame, wrap=tk.WORD, width=70, height=15)
+        self.stats_result.pack(padx=10, pady=10, expand=True, fill="both")
 
-def get_goals_gui():
-    result = get_goals(slack_id)
-    display_result(result)
+    def setup_goals_tab(self):
+        goals_frame = ttk.Frame(self.notebook)
+        self.notebook.add(goals_frame, text="Goals")
 
-def get_history_gui():
-    result = get_history(slack_id)
-    display_result(result)
+        ttk.Button(goals_frame, text="Get Goals", command=self.get_goals_gui).pack(pady=10)
 
-slack_id = 'YOUR SLACK ID HERE'
+        self.goals_result = scrolledtext.ScrolledText(goals_frame, wrap=tk.WORD, width=70, height=15)
+        self.goals_result.pack(padx=10, pady=10, expand=True, fill="both")
 
-root = tk.Tk()
-root.title("Session Manager")
+    def setup_history_tab(self):
+        history_frame = ttk.Frame(self.notebook)
+        self.notebook.add(history_frame, text="History")
 
-frame = tk.Frame(root)
-frame.pack(pady=10)
+        ttk.Button(history_frame, text="Get History", command=self.get_history_gui).pack(pady=10)
 
-work_label = tk.Label(frame, text="Work Description:")
-work_label.grid(row=0, column=0, padx=5, pady=5)
-work_entry = tk.Entry(frame, width=40)
-work_entry.grid(row=0, column=1, padx=5, pady=5)
+        self.history_result = scrolledtext.ScrolledText(history_frame, wrap=tk.WORD, width=70, height=15)
+        self.history_result.pack(padx=10, pady=10, expand=True, fill="both")
 
-start_button = tk.Button(frame, text="Start Session", command=start_session_gui)
-start_button.grid(row=1, column=0, columnspan=2, pady=5)
+    def api_request(self, endpoint, method='get', data=None):
+        url = f'{BASE_URL}/api/{endpoint}'
+        response = getattr(requests, method)(url, headers=self.headers, json=data)
+        return response.json()
 
-pause_resume_button = tk.Button(frame, text="Pause/Resume Session", command=pause_or_resume_session_gui)
-pause_resume_button.grid(row=2, column=0, columnspan=2, pady=5)
+    def display_result(self, result, widget):
+        widget.config(state=tk.NORMAL)
+        widget.delete('1.0', tk.END)
+        widget.insert(tk.END, json.dumps(result, indent=2))
+        widget.config(state=tk.DISABLED)
 
-cancel_button = tk.Button(frame, text="Cancel Session", command=cancel_session_gui)
-cancel_button.grid(row=3, column=0, columnspan=2, pady=5)
+    def get_latest_session_gui(self):
+        result = self.api_request(f'session/{SLACK_ID}')
+        self.display_result(result, self.session_result)
 
-latest_button = tk.Button(frame, text="View Latest Session", command=get_latest_session_gui)
-latest_button.grid(row=4, column=0, columnspan=2, pady=5)
+    def start_session_gui(self):
+        work = tk.simpledialog.askstring("Input", "What are you working on?")
+        if work:
+            result = self.api_request(f'start/{SLACK_ID}', method='post', data={'work': work})
+            self.display_result(result, self.session_result)
 
-stats_button = tk.Button(frame, text="View Stats", command=get_stats_gui)
-stats_button.grid(row=5, column=0, columnspan=2, pady=5)
+    def pause_or_resume_session_gui(self):
+        result = self.api_request(f'pause/{SLACK_ID}', method='post')
+        self.display_result(result, self.session_result)
 
-goals_button = tk.Button(frame, text="View Goals", command=get_goals_gui)
-goals_button.grid(row=6, column=0, columnspan=2, pady=5)
+    def cancel_session_gui(self):
+        result = self.api_request(f'cancel/{SLACK_ID}', method='post')
+        self.display_result(result, self.session_result)
 
-history_button = tk.Button(frame, text="View History", command=get_history_gui)
-history_button.grid(row=7, column=0, columnspan=2, pady=5)
+    def get_stats_gui(self):
+        result = self.api_request(f'stats/{SLACK_ID}')
+        self.display_result(result, self.stats_result)
 
-exit_button = tk.Button(frame, text="Exit", command=root.quit)
-exit_button.grid(row=8, column=0, columnspan=2, pady=5)
+    def get_goals_gui(self):
+        result = self.api_request(f'goals/{SLACK_ID}')
+        self.display_result(result, self.goals_result)
 
-tree = ttk.Treeview(root)
-tree.pack(pady=10, fill=tk.BOTH, expand=True)
+    def get_history_gui(self):
+        result = self.api_request(f'history/{SLACK_ID}')
+        self.display_result(result, self.history_result)
 
-root.mainloop()
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = SessionManager(root)
+    root.mainloop()
