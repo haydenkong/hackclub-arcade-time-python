@@ -2,43 +2,56 @@ import tkinter as tk
 from tkinter import ttk, messagebox, scrolledtext
 import requests
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
+import threading
+import time
 
-# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 
-#                                          SET UP                                             # 
-#                                                                                             # 
-#                                                                                             # 
-# GET YOUR API KEY BY RUNNING /API IN THE HACK CLUB SLACK CHANNEL                             #
-API_KEY = 'YOUR API KEY'
-# YOU CAN GET YOUR SLACK ID BY MESSAGING THE #WHATS-MY-SLACK-ID CHANNEL ON THE HACK CLUB SLACK#
-SLACK_ID = 'YOUR SLACK ID'
-#                                                                                             # 
-#                                                                                             # 
-#                                                                                             # 
-#                                                                                             # 
-# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 
+API_KEY = ''  # Initially empty
+SLACK_ID = ''  # Initially empty
 
-# DON'T CHANGE THIS!!!!! THIS IS THE OFFICIAL BASE URL FOR THE HACK HOUR API
 BASE_URL = 'https://hackhour.hackclub.com'
+
 class SessionManager:
     def __init__(self, root):
         self.root = root
-        self.root.title("HackHour API Manager | By Hayden Kong" + " | Slack ID: " + SLACK_ID)
+        self.root.title("HackHour API Manager | By Hayden Kong")
         self.root.geometry("900x700")
         self.headers = {'Authorization': f'Bearer {API_KEY}'}
-        
+        self.auto_session_active = False
+        self.credentials_saved = False  
+
         self.setup_ui()
-        self.auto_load_data()
+        self.load_credentials()  
 
     def setup_ui(self):
         self.notebook = ttk.Notebook(self.root)
         self.notebook.pack(expand=True, fill="both", padx=10, pady=10)
-
+         
         self.setup_api_overview_tab()
+        self.setup_credentials_tab() 
         self.setup_session_tab()
         self.setup_stats_tab()
         self.setup_goals_tab()
         self.setup_history_tab()
+
+    def setup_credentials_tab(self):
+        credentials_frame = ttk.Frame(self.notebook)
+        self.notebook.add(credentials_frame, text="Credentials")
+
+        slack_id_label = ttk.Label(credentials_frame, text="Slack ID:")
+        slack_id_label.grid(row=0, column=0, padx=5, pady=5)
+
+        self.slack_id_entry = ttk.Entry(credentials_frame)
+        self.slack_id_entry.grid(row=0, column=1, padx=5, pady=5)
+
+        api_key_label = ttk.Label(credentials_frame, text="API Key:")
+        api_key_label.grid(row=1, column=0, padx=5, pady=5)
+
+        self.api_key_entry = ttk.Entry(credentials_frame)
+        self.api_key_entry.grid(row=1, column=1, padx=5, pady=5)
+
+        save_button = ttk.Button(credentials_frame, text="Save Credentials", command=self.save_credentials)
+        save_button.grid(row=2, column=0, columnspan=2, pady=10)
 
     def setup_api_overview_tab(self):
         overview_frame = ttk.Frame(self.notebook)
@@ -48,7 +61,7 @@ class SessionManager:
 
         api_text = scrolledtext.ScrolledText(overview_frame, wrap=tk.WORD, width=80, height=20)
         api_text.pack(padx=10, pady=10, expand=True, fill="both")
-        
+
         api_docs = """
         Hack Hour API Overview:
 
@@ -76,7 +89,7 @@ class SessionManager:
         self.notebook.add(session_frame, text="Session")
 
         ttk.Button(session_frame, text="Update latest session stats", command=self.get_latest_session_gui).pack(pady=5)
-        
+
         work_frame = ttk.Frame(session_frame)
         work_frame.pack(pady=5)
         ttk.Label(work_frame, text="Work:").pack(side=tk.LEFT)
@@ -86,6 +99,15 @@ class SessionManager:
 
         ttk.Button(session_frame, text="Pause/Resume Session", command=self.pause_or_resume_session_gui).pack(pady=5)
         ttk.Button(session_frame, text="Cancel Session", command=self.cancel_session_gui).pack(pady=5)
+
+        auto_session_frame = ttk.Frame(session_frame)
+        auto_session_frame.pack(pady=5)
+        ttk.Label(auto_session_frame, text="Auto-Session Hours:").pack(side=tk.LEFT)
+        self.auto_session_hours = ttk.Entry(auto_session_frame, width=5)
+        self.auto_session_hours.pack(side=tk.LEFT, padx=5)
+        self.auto_session_button = ttk.Button(auto_session_frame, text="Start Auto-Session",
+                                              command=self.start_auto_session)
+        self.auto_session_button.pack(side=tk.LEFT)
 
         self.session_result = scrolledtext.ScrolledText(session_frame, wrap=tk.WORD, width=80, height=20)
         self.session_result.pack(padx=10, pady=10, expand=True, fill="both")
@@ -117,21 +139,49 @@ class SessionManager:
         self.history_result = scrolledtext.ScrolledText(history_frame, wrap=tk.WORD, width=80, height=20)
         self.history_result.pack(padx=10, pady=10, expand=True, fill="both")
 
-    def auto_load_data(self):
-        self.get_latest_session_gui()
-        self.get_stats_gui()
-        self.get_goals_gui()
-        self.get_history_gui()
+    def save_credentials(self):
+        global API_KEY, SLACK_ID
+        API_KEY = self.api_key_entry.get()
+        SLACK_ID = self.slack_id_entry.get()
+        self.headers = {'Authorization': f'Bearer {API_KEY}'}
+        self.root.title("HackHour API Manager | By Hayden Kong" + " | Slack ID: " + SLACK_ID)
+        messagebox.showinfo("Credentials Saved", "Your Slack ID and API Key have been saved!")
+        self.credentials_saved = True 
+
+        with open("credentials.txt", "w") as f:
+            json.dump({"API_KEY": API_KEY, "SLACK_ID": SLACK_ID}, f)
+
+        self.update_all_api_data() 
+
+    def load_credentials(self):
+        global API_KEY, SLACK_ID
+        try:
+            with open("credentials.txt", "r") as f:
+                credentials = json.load(f)
+                API_KEY = credentials.get("API_KEY", "")
+                SLACK_ID = credentials.get("SLACK_ID", "")
+                self.slack_id_entry.insert(0, SLACK_ID)
+                self.api_key_entry.insert(0, API_KEY)
+                self.headers = {'Authorization': f'Bearer {API_KEY}'}
+                self.root.title("HackHour API Manager | By Hayden Kong" + " | Slack ID: " + SLACK_ID)
+                self.credentials_saved = True  
+        except FileNotFoundError:
+            pass  
 
     def api_request(self, endpoint, method='get', data=None):
-        url = f'{BASE_URL}/api/{endpoint}'
-        try:
-            response = getattr(requests, method)(url, headers=self.headers, json=data)
-            response.raise_for_status()
-            return response.json()
-        except requests.RequestException as e:
-            print(f"API request failed: {e}")
-            return {"ok": False, "error": str(e)}
+        if self.credentials_saved:  
+            url = f'{BASE_URL}/api/{endpoint}'
+            try:
+                response = getattr(requests, method)(url, headers=self.headers, json=data)
+                response.raise_for_status()
+                return response.json()
+            except requests.RequestException as e:
+                print(f"API request failed: {e}")
+                return {"ok": False, "error": str(e)}
+        else:
+            messagebox.showwarning("Credentials Required",
+                                   "Please enter and save your Slack ID and API Key in the Credentials tab first.")
+            return {"ok": False, "error": "Credentials not provided."}
 
     def display_result(self, result, widget, formatter):
         widget.config(state=tk.NORMAL)
@@ -143,11 +193,11 @@ class SessionManager:
     def format_session(self, data):
         if not data.get('ok'):
             return f"Error: Failed to retrieve session data. {data.get('error', '')}"
-        
+
         session = data.get('data', {})
         if not session:
             return "No active session found."
-        
+
         formatted = f"Session Information:\n\n"
         formatted += f"ID: {session.get('id', 'N/A')}\n"
         formatted += f"Created At: {self.format_datetime(session.get('createdAt', ''))}\n"
@@ -163,7 +213,7 @@ class SessionManager:
     def format_stats(self, data):
         if not data.get('ok'):
             return f"Error: Failed to retrieve stats data. {data.get('error', '')}"
-        
+
         stats = data.get('data', {})
         formatted = f"User Statistics:\n\n"
         formatted += f"Total Sessions: {stats.get('sessions', 'N/A')}\n"
@@ -173,7 +223,7 @@ class SessionManager:
     def format_goals(self, data):
         if not data.get('ok'):
             return f"Error: Failed to retrieve goals data. {data.get('error', '')}"
-        
+
         goals = data.get('data', [])
         formatted = f"User Goals:\n\n"
         if not goals:
@@ -187,7 +237,7 @@ class SessionManager:
     def format_history(self, data):
         if not data.get('ok'):
             return f"Error: Failed to retrieve history data. {data.get('error', '')}"
-        
+
         history = data.get('data', [])
         formatted = f"Session History:\n\n"
         if not history:
@@ -242,6 +292,43 @@ class SessionManager:
     def get_history_gui(self):
         result = self.api_request(f'history/{SLACK_ID}')
         self.display_result(result, self.history_result, self.format_history)
+
+    def start_auto_session(self):
+        if self.auto_session_active:
+            self.auto_session_active = False
+            self.auto_session_button.config(text="Start Auto-Session")
+            messagebox.showinfo("Auto-Session", "Auto-Session stopped.")
+        else:
+            try:
+                hours = int(self.auto_session_hours.get())
+                if hours <= 0:
+                    raise ValueError("Hours must be a positive integer.")
+                self.auto_session_active = True
+                self.auto_session_button.config(text="Stop Auto-Session")
+                threading.Thread(target=self.run_auto_session, args=(hours,), daemon=True).start()
+            except ValueError as e:
+                messagebox.showerror("Invalid Input", str(e))
+
+    def run_auto_session(self, hours):
+        for _ in range(hours):
+            if not self.auto_session_active:
+                break
+            self.start_session_gui()
+            for remaining_minutes in range(60, 0, -1):
+                if remaining_minutes == 5:
+                    messagebox.showinfo("Session Reminder", "5 minutes left. Please submit proof of your session.")
+                time.sleep(60)
+            time.sleep(60)  
+        self.auto_session_active = False
+        self.auto_session_button.config(text="Start Auto-Session")
+        messagebox.showinfo("Auto-Session", "Auto-Session completed.")
+
+    def update_all_api_data(self):
+        if self.credentials_saved:
+            self.get_latest_session_gui()
+            self.get_stats_gui()
+            self.get_goals_gui()
+            self.get_history_gui()
 
 if __name__ == "__main__":
     root = tk.Tk()
